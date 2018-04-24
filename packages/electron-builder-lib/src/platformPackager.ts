@@ -118,10 +118,31 @@ export abstract class PlatformPackager<DC extends PlatformSpecificBuildOptions> 
   }
 
   protected packageInDistributableFormat(appOutDir: string, arch: Arch, targets: Array<Target>, taskManager: AsyncTaskManager): void {
-    taskManager.addTask(
-      BluebirdPromise.map(targets, it => it.isAsyncSupported ? it.build(appOutDir, arch) : null)
-        .then(() => BluebirdPromise.each(targets, it => it.isAsyncSupported ? null : it.build(appOutDir, arch)))
-    )
+    if (targets.find(it => !it.isAsyncSupported) == null) {
+      PlatformPackager.buildAsyncTargets(targets, taskManager, appOutDir, arch)
+      return
+    }
+
+    taskManager.add(async () => {
+      // BluebirdPromise.map doesn't invoke target.build immediately, but for RemoteTarget it is very critical to call build() before finishBuild()
+      const subTaskManager = new AsyncTaskManager(this.info.cancellationToken)
+      PlatformPackager.buildAsyncTargets(targets, subTaskManager, appOutDir, arch)
+      await subTaskManager.awaitTasks()
+
+      for (const target of targets) {
+        if (!target.isAsyncSupported) {
+          await target.build(appOutDir, arch)
+        }
+      }
+    })
+  }
+
+  private static buildAsyncTargets(targets: Array<Target>, taskManager: AsyncTaskManager, appOutDir: string, arch: Arch) {
+    for (const target of targets) {
+      if (target.isAsyncSupported) {
+        taskManager.addTask(target.build(appOutDir, arch))
+      }
+    }
   }
 
   private getExtraFileMatchers(isResources: boolean, appOutDir: string, options: GetFileMatchersOptions): Array<FileMatcher> | null {
@@ -577,20 +598,20 @@ export abstract class PlatformPackager<DC extends PlatformSpecificBuildOptions> 
       return (iconInfos)[0].file
     }
 
-    const resourceList = await this.resourceList
-    const resourcesDir = this.info.buildResourcesDir
     const sourceNames = [`icon.${format === "set" ? "png" : format}`, "icon.png", "icons"]
     if (format === "ico") {
       sourceNames.push("icon.icns")
     }
-    for (const fileName of sourceNames) {
-      if (resourceList.includes(fileName)) {
-        return (await this.resolveIcon([path.join(resourcesDir, fileName)], format))[0].file
-      }
-    }
 
-    log.warn({reason: "application icon is not set"}, "default Electron icon is used")
-    return null
+    const result = await this.resolveIcon(sourceNames, format)
+    if (result.length === 0) {
+      const framework = this.info.framework
+      log.warn({reason: "application icon is not set"}, framework.isDefaultAppIconProvided ? `default ${capitalizeFirstLetter(framework.name)} icon is used` : `application doesn't have an icon`)
+      return null
+    }
+    else {
+      return result[0].file
+    }
   }
 
   // convert if need, validate size (it is a reason why tool is called even if file has target extension (already specified as foo.icns for example))
@@ -619,7 +640,7 @@ export abstract class PlatformPackager<DC extends PlatformSpecificBuildOptions> 
     if (errorMessage != null) {
       throw new InvalidConfigurationError(errorMessage, result.errorCode)
     }
-    return result.icons!!
+    return result.icons || []
   }
 }
 
@@ -669,4 +690,8 @@ export function resolveFunction<T>(executor: T | string): T {
 
 export function chooseNotNull(v1: string | null | undefined, v2: string | null | undefined): string | null | undefined {
   return v1 == null ? v2 : v1
+}
+
+function capitalizeFirstLetter(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }

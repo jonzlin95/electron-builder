@@ -5,6 +5,8 @@ import { AppUpdater } from "./AppUpdater"
 import { getChannelFilename, getDefaultChannelName, isUseOldMacProvider, newBaseUrl, newUrlFromBase, Provider, ResolvedUpdateFileInfo } from "./main"
 import { parseUpdateInfo, resolveFiles } from "./Provider"
 
+const hrefRegExp = /\/tag\/v?([^\/]+)$/
+
 export abstract class BaseGitHubProvider<T extends UpdateInfo> extends Provider<T> {
   // so, we don't need to parse port (because node http doesn't support host as url does)
   protected readonly baseUrl: URL
@@ -38,15 +40,22 @@ export class GitHubProvider extends BaseGitHubProvider<UpdateInfo> {
     }, cancellationToken))!
 
     const feed = parseXml(feedXml)
-    const latestRelease = feed.element("entry", false, `No published versions on GitHub`)
+    let latestRelease = feed.element("entry", false, `No published versions on GitHub`)
     let version: string | null
     try {
       if (this.updater.allowPrerelease) {
         // noinspection TypeScriptValidateJSTypes
-        version = latestRelease.element("link").attribute("href").match(/\/tag\/v?([^\/]+)$/)!![1]
+        version = latestRelease.element("link").attribute("href").match(hrefRegExp)!![1]
       }
       else {
         version = await this.getLatestVersionString(cancellationToken)
+        for (const element of feed.getElements("entry")) {
+          if (element.element("link").attribute("href").match(hrefRegExp)!![1] === version) {
+            latestRelease = element
+            break
+          }
+        }
+
       }
     }
     catch (e) {
@@ -87,9 +96,12 @@ export class GitHubProvider extends BaseGitHubProvider<UpdateInfo> {
   }
 
   private async getLatestVersionString(cancellationToken: CancellationToken): Promise<string | null> {
-    const url = new URL(`${this.computeGithubBasePath(`/repos/${this.options.owner}/${this.options.repo}/releases`)}/latest`, this.baseApiUrl)
+    const options = this.options
+    // do not use API for GitHub to avoid limit, only for custom host or GitHub Enterprise
+    const url = (options.host == null || options.host === "github.com") ?
+      newUrlFromBase(`${this.basePath}/latest`, this.baseUrl) :
+      new URL(`${this.computeGithubBasePath(`/repos/${options.owner}/${options.repo}/releases`)}/latest`, this.baseApiUrl)
     try {
-      // do not use API to avoid limit
       const rawData = await this.httpRequest(url, {Accept: "application/json"}, cancellationToken)
       if (rawData == null) {
         return null

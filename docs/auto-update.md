@@ -50,6 +50,8 @@ autoUpdater.logger = require("electron-log")
 autoUpdater.logger.transports.file.level = "info"
 ```
 
+Note that in order to develop/test UI/UX of updating without packaging the application you need to have a file named `dev-app-update.yml` in the root of your project, which matches your `publish` setting from electron-builder config (but in [YAML](https://www.json2yaml.com) format).
+
 ## Staged Rollouts
 
 Staged rollouts allow you to distribute the latest version of your app to a subset of users that you can increase over time, similar to rollouts on platforms like Google Play.
@@ -130,6 +132,7 @@ Emitted on progress.
         * [`.downloadUpdate(cancellationToken)`](#module_electron-updater.AppUpdater+downloadUpdate) ⇒ <code>Promise&lt;any&gt;</code>
         * [`.getFeedURL()`](#module_electron-updater.AppUpdater+getFeedURL) ⇒ <code>undefined</code> \| <code>null</code> \| <code>String</code>
         * [`.setFeedURL(options)`](#module_electron-updater.AppUpdater+setFeedURL)
+        * [`.channel()`](#module_electron-updater.AppUpdater+channel)
         * [`.quitAndInstall(isSilent, isForceRunAfter)`](#module_electron-updater.AppUpdater+quitAndInstall)
     * [`.Logger`](#Logger)
         * [`.debug(message)`](#module_electron-updater.Logger+debug)
@@ -168,6 +171,7 @@ Emitted on progress.
     * [`.downloadUpdate(cancellationToken)`](#module_electron-updater.AppUpdater+downloadUpdate) ⇒ <code>Promise&lt;any&gt;</code>
     * [`.getFeedURL()`](#module_electron-updater.AppUpdater+getFeedURL) ⇒ <code>undefined</code> \| <code>null</code> \| <code>String</code>
     * [`.setFeedURL(options)`](#module_electron-updater.AppUpdater+setFeedURL)
+    * [`.channel()`](#module_electron-updater.AppUpdater+channel)
     * [`.quitAndInstall(isSilent, isForceRunAfter)`](#module_electron-updater.AppUpdater+quitAndInstall)
 
 <a name="module_electron-updater.AppUpdater+checkForUpdates"></a>
@@ -192,6 +196,10 @@ Configure update provider. If value is `string`, [GenericServerOptions](/configu
 
 
 - options <code>[PublishConfiguration](/configuration/publish.md#publishconfiguration)</code> | <code>String</code> | <code>[GithubOptions](/configuration/publish.md#githuboptions)</code> | <code>[S3Options](/configuration/publish.md#s3options)</code> | <code>[SpacesOptions](/configuration/publish.md#spacesoptions)</code> | <code>[GenericServerOptions](/configuration/publish.md#genericserveroptions)</code> | <code>[BintrayOptions](/configuration/publish.md#bintrayoptions)</code> - If you want to override configuration in the `app-update.yml`.
+
+<a name="module_electron-updater.AppUpdater+channel"></a>
+#### `appUpdater.channel` (getter and setter)
+Define the channel which the Auto-Updater will follow (see [the auto-update with channels tutorial](tutorials/release-using-channels.md#release_using_channels)) using `appUpdater.channel = 'beta'` or get the current channel with `currentChannel = appUpdater.channel`.
 
 <a name="module_electron-updater.AppUpdater+quitAndInstall"></a>
 #### `appUpdater.quitAndInstall(isSilent, isForceRunAfter)`

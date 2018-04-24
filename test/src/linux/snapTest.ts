@@ -30,11 +30,10 @@ test.ifAll.ifDevOrLinuxCi("snap electron 2", app({
       artifactName: "${name}_v${version}.${ext}",
     },
     productName: "Sep Electron 2",
-    electronVersion: "2.0.0-beta.1",
+    electronVersion: "2.0.0-beta.7",
   },
 }))
 
-// custom packages to test not-prepacked snap build
 // very slow
 test.skip("snap full", app({
   targets: snapTarget,
@@ -55,7 +54,7 @@ test.skip("snap full electron 2", app({
     extraMetadata: {
       name: "se-electron2",
     },
-    electronVersion: "2.0.0-beta.1",
+    electronVersion: "2.0.0-beta.7",
     productName: "Snap Electron 2 App (full build)",
     snap: {
       useTemplateApp: false,
@@ -162,6 +161,40 @@ test.ifDevOrLinuxCi("custom env", app({
     }
   },
   effectiveOptionComputed: async ({snap}) => {
+    expect(snap).toMatchSnapshot()
+    return true
+  },
+}))
+
+test.ifDevOrLinuxCi("custom after, no desktop", app({
+  targets: Platform.LINUX.createTarget("snap"),
+  config: {
+    extraMetadata: {
+      name: "sep",
+    },
+    productName: "Sep",
+    snap: {
+      after: ["bar"],
+    }
+  },
+  effectiveOptionComputed: async ({ snap }) => {
+    expect(snap).toMatchSnapshot()
+    return true
+  },
+}))
+
+test.ifDevOrLinuxCi("no desktop plugs", app({
+  targets: Platform.LINUX.createTarget("snap"),
+  config: {
+    extraMetadata: {
+      name: "sep",
+    },
+    productName: "Sep",
+    snap: {
+      plugs: ["foo", "bar"]
+    }
+  },
+  effectiveOptionComputed: async ({ snap }) => {
     expect(snap).toMatchSnapshot()
     return true
   },

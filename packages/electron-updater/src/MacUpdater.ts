@@ -1,4 +1,3 @@
-import BluebirdPromise from "bluebird-lst"
 import { AllPublishOptions, CancellationToken, configureRequestOptionsFromUrl, DigestTransform, newError, ProgressCallbackTransform, RequestHeaders, safeGetHeader, safeStringifyJson, UpdateInfo } from "builder-util-runtime"
 import { createServer, IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "http"
 import { AppUpdater } from "./AppUpdater"
@@ -41,7 +40,7 @@ export class MacUpdater extends AppUpdater {
 
     const requestHeaders = await this.computeRequestHeaders()
 
-    return await new BluebirdPromise<Array<string>>((resolve, reject) => {
+    return await new Promise<Array<string>>((resolve, reject) => {
       server.on("request", (request: IncomingMessage, response: ServerResponse) => {
         const requestUrl = request.url!
         this._logger.info(`${requestUrl} requested`)
@@ -51,6 +50,7 @@ export class MacUpdater extends AppUpdater {
           response.end(data)
         }
         else if (requestUrl.startsWith("/app.zip")) {
+          const debug = this._logger.debug
           let errorOccurred = false
           response.on("finish", () => {
             try {
@@ -63,6 +63,10 @@ export class MacUpdater extends AppUpdater {
               }
             }
           })
+
+          if (debug != null) {
+            debug(`app.zip requested by Squirrel.Mac, download ${zipFileInfo.url.href}`)
+          }
           this.doProxyUpdateFile(response, zipFileInfo.url.href, requestHeaders, zipFileInfo.info.sha512, cancellationToken, error => {
             errorOccurred = true
             try {
@@ -92,13 +96,16 @@ export class MacUpdater extends AppUpdater {
 
   private doProxyUpdateFile(nativeResponse: ServerResponse, url: string, headers: OutgoingHttpHeaders, sha512: string | null, cancellationToken: CancellationToken, errorHandler: (error: Error) => void) {
     const downloadRequest = this.httpExecutor.doRequest(configureRequestOptionsFromUrl(url, {headers}), downloadResponse => {
-      if (downloadResponse.statusCode! >= 400) {
+      const statusCode = downloadResponse.statusCode
+      if (statusCode >= 400) {
+        this._logger.warn(`Request to ${url} failed, status code: ${statusCode}`)
+
         try {
-          nativeResponse.writeHead(404)
+          nativeResponse.writeHead(statusCode)
           nativeResponse.end()
         }
         finally {
-          errorHandler(new Error(`Cannot download "${url}", status ${downloadResponse.statusCode}: ${downloadResponse.statusMessage}`))
+          errorHandler(new Error(`Cannot download "${url}", status ${statusCode}: ${downloadResponse.statusMessage}`))
         }
         return
       }

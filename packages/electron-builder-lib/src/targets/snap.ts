@@ -1,6 +1,7 @@
 import { Arch, replaceDefault as _replaceDefault, serializeToYaml, executeAppBuilder, toLinuxArchString } from "builder-util"
 import { chmod, outputFile, writeFile } from "fs-extra-p"
 import * as path from "path"
+import * as semver from "semver"
 import { SnapOptions } from ".."
 import { asArray } from "builder-util-runtime"
 import { Target } from "../core"
@@ -31,6 +32,10 @@ export default class SnapTarget extends Target {
     return result
   }
 
+  private get isElectron2(): boolean {
+    return semver.gte(this.packager.config.electronVersion || "1.8.3", "2.0.0-beta.1")
+  }
+
   private createDescriptor(arch: Arch): any {
     const appInfo = this.packager.appInfo
     const snapName = this.packager.executableName.toLowerCase()
@@ -39,6 +44,7 @@ export default class SnapTarget extends Target {
 
     const plugs = normalizePlugConfiguration(options.plugs)
     const plugNames = this.replaceDefault(plugs == null ? null : Object.getOwnPropertyNames(plugs), defaultPlugs)
+    const desktopPart = this.isElectron2 ? "desktop-gtk3" : "desktop-gtk2"
 
     const buildPackages = asArray(options.buildPackages)
     this.isUseTemplateApp = this.options.useTemplateApp !== false && arch === Arch.x64 && buildPackages.length === 0
@@ -75,7 +81,7 @@ export default class SnapTarget extends Target {
         app: {
           plugin: "nil",
           "stage-packages": this.replaceDefault(options.stagePackages, defaultStagePackages),
-          after: this.replaceDefault(options.after, [this.packager.isElectron2 ? "desktop-gtk3" : "desktop-gtk2"]),
+          after: this.replaceDefault(options.after, [desktopPart]),
         }
       },
     }
@@ -105,6 +111,32 @@ export default class SnapTarget extends Target {
     if (options.assumes != null) {
       snap.assumes = asArray(options.assumes)
     }
+
+    if (!this.isUseTemplateApp && snap.parts.app.after.includes(desktopPart)) {
+      // todo change install to override-build when new snapcraft release will be installed on most user machines
+      const desktopPartOverride: any = {
+        install: `set -x
+export XDG_DATA_DIRS=$SNAPCRAFT_PART_INSTALL/usr/share
+update-mime-database $SNAPCRAFT_PART_INSTALL/usr/share/mime
+
+for dir in $SNAPCRAFT_PART_INSTALL/usr/share/icons/*/; do
+  if [ -f $dir/index.theme ]; then
+    if which gtk-update-icon-cache-3.0 &> /dev/null; then
+      gtk-update-icon-cache-3.0 -q $dir
+    elif which gtk-update-icon-cache &> /dev/null; then
+      gtk-update-icon-cache -q $dir
+    fi
+  fi
+done`
+      }
+
+      if (appDescriptor.plugs.includes("desktop") || appDescriptor.plugs.includes("desktop-legacy")) {
+        desktopPartOverride.stage = ["-./usr/share/fonts/**"]
+      }
+
+      snap.parts[desktopPart] = desktopPartOverride
+    }
+
     return snap
   }
 
@@ -131,7 +163,7 @@ export default class SnapTarget extends Target {
       "--stage", stageDir,
       "--arch", toLinuxArchString(arch),
       "--output", artifactPath,
-      "--docker-image", isElectronBased(this.packager.info.framework) && this.packager.isElectron2 ? "electronuserland/snapcraft-electron:2" : "electronuserland/builder:latest",
+      "--docker-image", isElectronBased(this.packager.info.framework) && this.isElectron2 ? "electronuserland/snapcraft-electron:2" : "electronuserland/builder:latest",
     ]
 
     await this.helper.icons
@@ -165,7 +197,7 @@ export default class SnapTarget extends Target {
     }
 
     if (this.isUseTemplateApp) {
-      args.push("--template-url", this.packager.isElectron2 ? "electron2" : "electron1")
+      args.push("--template-url", this.isElectron2 ? "electron2" : "electron1")
     }
     await executeAppBuilder(args)
     packager.dispatchArtifactCreated(artifactPath, this, arch, packager.computeSafeArtifactName(artifactName, "snap", arch, false))
